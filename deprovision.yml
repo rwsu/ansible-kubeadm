@@ -1,0 +1,31 @@
+- hosts: master
+  remote_user: root
+  tasks:
+
+    - name: find worker nodes
+      shell: kubectl get nodes --kubeconfig /etc/kubernetes/admin.conf | grep -v master | grep -v VERSION | cut -f 1 -d ' '
+      register: worker_nodes
+
+    - name: find all nodes
+      shell: kubectl get nodes --kubeconfig /etc/kubernetes/admin.conf | grep -v VERSION | cut -f 1 -d ' '
+      register: all_nodes
+
+    - name: drain worker nodes
+      command: kubectl drain {{ item }} --kubeconfig /etc/kubernetes/admin.conf --delete-local-data --force --ignore-daemonsets
+      with_items: "{{ worker_nodes.stdout_lines }}"
+      
+    - name: delete nodes
+      command: kubectl delete node {{ item }} --kubeconfig /etc/kubernetes/admin.conf
+      with_items: "{{ all_nodes.stdout_lines }}"
+
+    - name: reset master 
+      shell: kubeadm reset
+      removes: /etc/kubernetes/admin.conf
+
+- hosts: worker
+  remote_user: root
+  tasks:
+
+    - name: reset node
+      shell: kubeadm reset
+      removes: /etc/kubernetes/admin.conf
