@@ -12,6 +12,12 @@
         state: started
         enabled: yes
 
+    - name: firewall status
+      service:
+        name: firewalld
+        state: stopped
+#        enabled: yes
+
     - name: add kubernetes.repo
       yum_repository:
         name: kubernetes
@@ -29,8 +35,15 @@
         policy: targeted
         state: permissive
 
+#    - name: install kubelet kubeadm kubectl with version
+#      command: yum install -y kubelet-{{ kubernetes_version }} kubeadm-{{ kubernetes_version }} kubectl-{{ kubernetes_version }}
+#      when: kubernetes_version is defined
+
     - name: install kubelet kubeadm kubectl
       command: yum install -y kubelet kubeadm kubectl
+
+    - name: systemctl daemon-reload
+      command: systemctl daemon-reload
 
     - name: ensure kubelet is running
       service:
@@ -69,6 +82,17 @@
         - 10251
         - 10252
         - 10255
+ 
+#    - name: extra packages
+#      yum:
+#        name: ansible libvirt-client
+#        state: installed
+
+#    - name: run kubeadm init with version
+#      shell: kubeadm init --kubernetes-version "{{ kubernetes_version }}" --pod-network-cidr=10.244.0.0/16 | grep "kubeadm join"
+#      register: kubeadm_join_command
+#      creates: /etc/kubernetes/admin.conf
+#      when: kubernetes_version is defined
 
     - name: run kubeadm init
       shell: kubeadm init --pod-network-cidr=10.244.0.0/16 | grep "kubeadm join"
@@ -88,8 +112,12 @@
       retries: 30
       delay: 10
 
+    - name: copy /etc/kubernetes/admin.conf to ~/.kube/config
+      command: cp /etc/kubernetes/admin.conf ~/.kube/config
+
     - name: install Flannel CNI
-      command: kubectl apply --kubeconfig /etc/kubernetes/admin.conf -f https://raw.githubusercontent.com/coreos/flannel/v0.10.0/Documentation/kube-flannel.yml
+#      command: kubectl apply --kubeconfig /etc/kubernetes/admin.conf -f https://raw.githubusercontent.com/coreos/flannel/v0.10.0/Documentation/kube-flannel.yml
+      command: kubectl apply --kubeconfig /etc/kubernetes/admin.conf -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
       register: flannel_install 
 
     - name: wait for kube-dns to have Running status
@@ -98,6 +126,9 @@
       until: kube_dns_status.stdout.find("Running") != -1
       retries: 30
       delay: 10
+
+    - name: allow master to schedule pods. needed for gluster 3-node requirement
+      command: kubectl taint nodes --all node-role.kubernetes.io/master-
 
 - hosts: worker
   remote_user: root

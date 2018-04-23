@@ -1,7 +1,6 @@
 - hosts: master
   remote_user: root
   tasks:
-
     - name: find worker nodes
       shell: kubectl get nodes --kubeconfig /etc/kubernetes/admin.conf | grep -v master | grep -v VERSION | cut -f 1 -d ' '
       register: worker_nodes
@@ -25,7 +24,14 @@
 - hosts: worker
   remote_user: root
   tasks:
-
-    - name: reset node
+    - name: reset worker node
       shell: kubeadm reset
       removes: /etc/kubernetes/admin.conf
+
+- hosts: all
+  remote_user: root
+  tasks:
+    - name: remove packages
+      package:
+        name: docker, kubelet, kubeadm, kubectl
+        state: absent 

@@ -1,0 +1,6 @@
+[master]
+master.somewhere.com
+
+[worker]
+work1.somewhere.com
+work2.somewhere.com

@@ -1,6 +1,0 @@
-[master]
-smc-master.cloud.lab.eng.bos.redhat.com
-
-[worker]
-smc-work1.cloud.lab.eng.bos.redhat.com
-smc-work2.cloud.lab.eng.bos.redhat.com

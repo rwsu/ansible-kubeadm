@@ -1,0 +1,72 @@
+- hosts: all
+  remote_user: root
+  tasks:
+  # Open Master node TCP ports (inbound)
+  # 2222 GlusterFS pod's sshd
+  # 24007 GlusterFS Daemon
+  # 24008 GlusterFS Management
+  # 49152-49251 for bricks
+    - iptables:
+        table: filter
+        chain: INPUT
+        action: insert
+        protocol: tcp
+        match: tcp
+        ctstate: NEW
+        jump: ACCEPT
+        destination_port: "{{ item }}"
+      become: true
+      with_items:
+        - 2222
+        - 24007
+        - 24008
+        - 49152:49251
+
+    - name: dm_snapshot dm_mirror dm_thin_pool kernel modules should be loaded
+      modprobe:
+        name: "{{ item }}"
+        state: present
+      with_items: 
+        - dm_snapshot
+        - dm_mirror
+        - dm_thin_pool
+
+    - name: install glusterfs-fuse git packages
+      yum:
+        name: "{{ item }}"
+        state: installed
+      with_items:
+        - glusterfs-fuse
+        - git
+
+    - name: enable SELinux virt_sandbox_use_fusefs
+      seboolean:
+        name: virt_sandbox_use_fusefs
+        state: yes
+        persistent: yes
+
+#    - name: copy hosts
+#      copy:
+#        src: hosts
+#        dest: /etc/hosts
+
+#    - name: wipe /dev/vdb
+#      command: wipefs -a /dev/vdb
+
+- hosts: master
+  remote_user: root
+  tasks:
+
+  - name: install gluster-kubernetes repo
+    git:
+      repo: https://github.com/gluster/gluster-kubernetes/
+      dest: ~/gluster-kubernetes
+
+  - name: copy local topology
+    copy:
+      src: topology.json-smc
+      dest: ~/gluster-kubernetes/deploy/topology.json
+
+#  - name: run gk-deploy
+#    command: ./gk-deploy -g -v 
+#    chdir: ~/gluster-kubernetes/deploy
