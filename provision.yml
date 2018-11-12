@@ -22,7 +22,7 @@
       yum_repository:
         name: kubernetes
         description: upstream kubernetes repo
-        baseurl: https://packages.cloud.google.com/yum/repos/kubernetes-el7-\$basearch
+        baseurl: https://packages.cloud.google.com/yum/repos/kubernetes-el7-x86_64
         enabled: yes
         gpgcheck: yes
         repo_gpgcheck: yes
@@ -30,6 +30,11 @@
 
     # SELinux needs to be disabled to allow containers to access the host filesystem as
     # required by pod networks. is this really needed??
+    - name: install python2-libselinux
+      yum:
+        name: python2-libselinux
+        state: installed
+
     - name: set SELinux to permissive
       selinux:
         policy: targeted
@@ -53,6 +58,14 @@
 
     - name: disable swap
       command: swapoff -a
+
+    - name: sysctl net.bridge.bridge-nf-call-iptables=1
+      sysctl:
+        name: net.bridge.bridge-nf-call-iptables
+        value: 1
+        sysctl_set: yes
+        state: present
+        reload: yes
 
 - hosts: master
   remote_user: root
@@ -82,7 +95,7 @@
         - 10251
         - 10252
         - 10255
- 
+
 #    - name: extra packages
 #      yum:
 #        name: ansible libvirt-client
@@ -97,7 +110,8 @@
     - name: run kubeadm init
       shell: kubeadm init --pod-network-cidr=10.244.0.0/16 | grep "kubeadm join"
       register: kubeadm_join_command
-      creates: /etc/kubernetes/admin.conf
+      args:
+        creates: /etc/kubernetes/admin.conf
 
     - debug:
         var: kubeadm_join_command.stdout_lines
@@ -115,10 +129,14 @@
     - name: copy /etc/kubernetes/admin.conf to ~/.kube/config
       command: cp /etc/kubernetes/admin.conf ~/.kube/config
 
-    - name: install Flannel CNI
-#      command: kubectl apply --kubeconfig /etc/kubernetes/admin.conf -f https://raw.githubusercontent.com/coreos/flannel/v0.10.0/Documentation/kube-flannel.yml
-      command: kubectl apply --kubeconfig /etc/kubernetes/admin.conf -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
-      register: flannel_install 
+#    - name: install Flannel CNI
+##      command: kubectl apply --kubeconfig /etc/kubernetes/admin.conf -f https://raw.githubusercontent.com/coreos/flannel/v0.10.0/Documentation/kube-flannel.yml
+#      command: kubectl apply --kubeconfig /etc/kubernetes/admin.conf -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
+#      register: cni_install
+
+    - name: install Weave Net CNI
+      shell: export kubever=$(kubectl version | base64 | tr -d '\n'); kubectl apply -f "https://cloud.weave.works/k8s/net?k8s-version=$kubever"
+      register: cni_install
 
     - name: wait for kube-dns to have Running status
       shell: kubectl get pods --kubeconfig /etc/kubernetes/admin.conf --all-namespaces | grep dns
@@ -129,6 +147,32 @@
 
     - name: allow master to schedule pods. needed for gluster 3-node requirement
       command: kubectl taint nodes --all node-role.kubernetes.io/master-
+
+    - name: add dashboard
+      command: kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/master/src/deploy/recommended/kubernetes-dashboard.yaml
+
+    - name: copy admin user yaml
+      copy:
+        src: dashboard-user.yml
+        dest: /root
+
+    - name: create dashboard admin user
+      command: kubectl create -f dashboard-user.yml
+
+    # To get token for dashboard
+    # kubectl -n kube-system describe secret $(kubectl -n kube-system get secret | grep admin-user | awk '{print $1}')
+
+    - name: dashboard user
+      shell: kubectl -n kube-system get secret | grep admin-user | awk '{print $1}'
+      register: dashboard_user
+
+    - debug: var=dashboard_user
+
+    - name: dashboard token
+      command: "kubectl -n kube-system describe secret {{ dashboard_user.stdout }}"
+      register: dashboard_token
+
+    - debug: var=dashboard_token
 
 - hosts: worker
   remote_user: root
